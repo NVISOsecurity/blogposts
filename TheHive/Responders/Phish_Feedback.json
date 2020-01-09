@@ -2,7 +2,7 @@
   "name": "Phish_Feedback",
   "version": "1.0",
   "author": "Tom Asselman NVISO",
-  "url": "https://github.com/TheHive-Project/Cortex-Analyzers",
+  "url": "https://github.com/NVISO-BE/blogposts",
   "license": "AGPL-V3",
   "description": "Sends an email to the user with feedback about a phishing report",
   "dataTypeList": ["thehive:case"],
