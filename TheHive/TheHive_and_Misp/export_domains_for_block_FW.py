@@ -1,4 +1,5 @@
 #Example code to export IOCS of type 'domain' from Misp which have the tag 'Block_FW' set
+#This is of course easily applicable to types as url,ip_dst ,ip_src in Misp as well of course , this is just 1 example
 
 misp_url = ' -- your_misp_url -- '
 misp_key = ' -- your_Misp_api_key -- '
