@@ -1,0 +1,96 @@
+global ('$emailaddress');
+global ('$email2textaddress');
+global ('$signalphonenumber');
+global ('$receivesignalmessages');
+global ('$receivemails');
+global ('$receivetexts');
+global ('$scriptlocation');
+
+debug(57);
+sub callback {
+	$receivemails = $3["emailchkbox"];
+	$emailaddress = $3["email"];
+	$email2textaddress = $3["txt2email"];
+	$receivetexts = $3["textschkbox"];
+	$signalphonenumber = $3["signalnumber"];
+	$receivesignalmessages = $3["signalchkbox"];
+	$scriptlocation = $3["script_location"];
+	if(($receivemails eq 'true') && (strlen($emailaddress) == 0))
+	{
+		show_message("You won't receive emails because you did not input an email address!");
+	}	
+	else if(($receivetexts eq 'true') && (strlen($email2textaddress) == 0))
+	{
+		show_message("mail to text field is empty, you will not receive text messages");
+	}
+	
+	else if (($receivesignalmessages eq 'true') && (strlen($signalphonenumber) == 0))
+	{
+		show_message("You won't receive signal messages because you did not input a phone number");
+	}
+	
+	else
+	{
+		show_message("preferences saved successfully!");
+	}
+	
+	if (checkError($error)) 
+	{
+		warn("$error");
+	}	
+
+}
+
+
+sub shownotificationdialog{
+	$dialog = dialog("notification preferences",%(email => $emailaddress, txt2email => $txt2email,signalnumber => $signalphonenumber,script_location => "/home/kali/aggressors/mailer.py", emailchkbox => $receivemails,textschkbox => $receivetexts, signalchkbox => $receivesignalmessages),&callback);
+	dialog_description($dialog, "Get notified when a new beacon calls home.");
+	drow_text($dialog,"email","Your email address:");
+	drow_text($dialog,"txt2email","Email address of the mail-to-text provider:");
+	drow_text($dialog,"signalnumber","Your signal phone number in internation notation(+countrycode):");
+	drow_text($dialog,"script_location","The location of the mail script on YOUR LOCAL HOST:");
+	drow_checkbox($dialog,"emailchkbox","Do you want email notifications?");
+	drow_checkbox($dialog,"textschkbox","Do you want text messages?");
+	drow_checkbox($dialog,"signalchkbox","Do you want signal messages?");
+	dbutton_action($dialog,"set preferences");
+	dialog_show($dialog);
+}
+
+
+
+
+popup aggressor	{
+	item "Notification preferences" {shownotificationdialog();}
+}
+
+
+on beacon_initial {
+local('$computer');
+local('$internal');
+$computer = beacon_info($1, "computer");
+$internal = beacon_info($1, "internal");
+if(($receivemails eq 'true') && (strlen($emailaddress) != 0)){
+		 println("executing python $scriptlocation --ip $internal --computer $computer --receive-emails $emailaddress");
+		 $handle = exec("python $scriptlocation --ip $internal --computer $computer --receive-emails --email-address $emailaddress");
+	}
+	
+if(($receivetexts eq 'true') && (strlen($email2textaddress) != 0))
+{
+		println("executing python $scriptlocation --ip $internal --computer $computer --receive-texts --mail_totext $email2textaddress ");
+		$handle = exec("python $scriptlocation --ip $internal --computer $computer --receive-texts --mail_totext $email2textaddress");
+}
+	
+if (($receivesignalmessages eq 'true') && (strlen($signalphonenumber) != 0))
+{
+	println("executing python $scriptlocation --ip $internal --computer $computer --receive-signalmessage --signal-number $signalphonenumber");
+	 $handle = exec("python $scriptlocation --ip $internal --computer $computer --receive-signalmessage --signal-number $signalphonenumber");
+}
+	
+
+if (checkError($error)) 
+	{
+		warn("$error");
+	}	
+
+};
+
