@@ -1,0 +1,43 @@
+global ('$emailaddress');
+global ('$email2textaddress');
+global ('$signalphonenumber');
+global ('$scriptlocation');
+global ('$receivemails');
+global ('$receivetexts');
+global ('$receivesignalmessages');
+
+
+$emailaddress = "";
+$txt2emailaddress ="";
+$signalphonenumber ="+";
+$scriptlocation = "notifier.py";
+$receivemails = "true";
+$receivetexts = "false";
+$receivesignalmessages = "true";
+
+
+on beacon_initial {
+local('$computer');
+local('$internal');
+$computer = beacon_info($1, "computer");
+$internal = beacon_info($1, "internal");
+if(($receivemails eq 'true') && (strlen($emailaddress) != 0)){
+		 say("new beacon detected! Emailing $emailaddress");
+		 println("executing python $scriptlocation --ip $internal --computer $computer --receive-emails $emailaddress");
+		 $handle = exec("python $scriptlocation --ip $internal --computer $computer --receive-emails --email-address $emailaddress");
+	}
+	
+if(($receivetexts eq 'true') && (strlen($email2textaddress) != 0))
+{
+		say("new beacon detected! sending an email to the email to text service!");
+		println("executing python $scriptlocation --ip $internal --computer $computer --receive-texts --mail_totext $email2textaddress ");
+		$handle = exec("python $scriptlocation --ip $internal --computer $computer --receive-texts --mail_totext $email2textaddress");
+}
+	
+if (($receivesignalmessages eq 'true') && (strlen($signalphonenumber) != 0))
+{
+	say("new beacon detected! sending a signal message to $signalphonenumber");
+	println("executing python $scriptlocation --ip $internal --computer $computer --receive-signalmessage --signal-number $signalphonenumber");
+	 $handle = exec("python $scriptlocation --ip $internal --computer $computer --receive-signalmessage --signal-number $signalphonenumber");
+}
+}
