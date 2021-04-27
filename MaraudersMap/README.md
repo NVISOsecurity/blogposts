@@ -5,7 +5,7 @@ The Marauders Map is meant to be used on assessments where you have gained GUI a
 <br>
 The Marauders Map is a DLL written in C#, enriched by the DllExport project to export functions that can serve as an entrypoint of invocation for unmanaged code such as rundll32.
 
-Corresponding blogpost: 
+Corresponding blogpost: https://blog.nviso.eu/2021/04/27/i-solemnly-swear-i-am-up-to-no-good-introducing-the-marauders-map/
 
 ## Capabilities
 The power of the Marauders Map is in it's compatibility with the office suite, Marauders map is capeable of the following functionality:
