@@ -1,5 +1,5 @@
 # Marauders Map
-The internal attacker toolkit heavily inspired by the folks of MDSec and their [SharpPack](https://www.mdsec.co.uk/2018/12/sharppack-the-insider-threat-toolkit/)
+The internal attacker toolkit heavily inspired by the folks of MDSec and their [SharpPack](https://www.mdsec.co.uk/2018/12/sharppack-the-insider-threat-toolkit/), highly recommend checking that post out.
 <br>
 The Marauders Map is meant to be used on assessments where you have gained GUI access to an enviornment. 
 <br>
