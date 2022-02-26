@@ -1,4 +1,4 @@
-def return_tagged_result(title: str, result: [dict, list], tags: list):
+def return_tagged_results(title: str, result: [dict, list], tags: list):
     """
     Output as war room entry and add tags
 
@@ -32,5 +32,7 @@ results = [
         'DetectionStatus': 'Prevented'
     }
 ]
+tags_to_add = ['evidence', 'malware']
+entry_title = "Malware Mitigation Status"
 
-return_tagged_result(title="War Room Entry Title", result=results, tags=['evidence', 'malware'])
+return_tagged_results(title=entry_title, result=results, tags=tags_to_add)
