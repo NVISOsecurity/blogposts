@@ -1,18 +1,18 @@
-def return_tagged_results(title: str, result: [dict, list], tags: list):
+def return_tagged_results(title: str, results: [dict, list], tags: list):
     """
     Output as war room entry and add tags
 
     :type title: ``str``
     :param title: title of war room entry
-    :type result: ``dict, list``
-    :param result: dict or list to output as war room entry
+    :type results: ``dict, list``
+    :param results: dict or list to output as war room entry
     :type tags: ``list``
     :param tags: List of tags to add to war room entry
 
     """
 
     command_result = CommandResults(
-        readable_output=tableToMarkdown(title, result, None, removeNull=True),
+        readable_output=tableToMarkdown(title, results, None, removeNull=True),
     ).to_context()
 
     command_result['Tags'] = tags
@@ -20,7 +20,7 @@ def return_tagged_results(title: str, result: [dict, list], tags: list):
     demisto.results(command_result)
 
 
-results = [
+entry_results = [
     {
         'FileName': 'malware.exe',
         'FilePath': 'c:\\temp',
@@ -35,4 +35,4 @@ results = [
 tags_to_add = ['evidence', 'malware']
 entry_title = "Malware Mitigation Status"
 
-return_tagged_results(title=entry_title, result=results, tags=tags_to_add)
+return_tagged_results(title=entry_title, results=entry_results, tags=tags_to_add)
