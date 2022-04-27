@@ -33,11 +33,11 @@ def nitro_execute_api_command(command: str, args: dict = None):
     })
 
     if not isinstance(results, list) \
-            or len(results) == 0\
+            or not len(results)\
             or not isinstance(results[0], dict):
         return []
 
-    results = results[0].get("Contents").get("response")
+    results = results[0].get("Contents", {}).get("response", [])
     for result in results:
         if "contents" in result:
             result["Contents"] = result.pop("contents")
