@@ -1,0 +1,365 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "metadata": {
+        "comments": "This template sets up logging (and optionally alerting) for Azure subscriptions.",
+        "author": "Maxime Thiebaut (@0xThiebaut)",
+        "blog": "https://blog.nviso.eu/2022/05/18/detecting-preventing-rogue-azure-subscriptions/"
+    },
+    "parameters": {
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Location for all resources."
+            }
+        },
+        "resourcePrefix": {
+            "defaultValue": "subscription-monitoring",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 39,
+            "metadata": {
+                "description": "A prefix used to name all created resources. Must be composed of alphanumerics, hyphens and underscores (see <a href='https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules'>naming rules and restrictions for Azure resources</a>)."
+            }
+        },
+        "logAnalyticsWorkspaceId": {
+            "type": "string",
+            "minLength": 1,
+            "metadata": {
+                "description": "The target log analytics workspace's ID (see <a href='https://portal.azure.com/#blade/HubsExtension/BrowseResourceBlade/resourceType/Microsoft.OperationalInsights%2Fworkspaces'>all exisiting workspaces</a>)."
+            }
+        },
+        "customLogName": {
+            "defaultValue": "SubscriptionInventory",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1021,
+            "metadata": {
+                "description": "The custom log name under which the subscriptions should be stored in the log analytics workspace. Valid identifier names are between 1 and 1024 (effectively 1021) characters long, are case-sensitive, and may contain alphanumerics, underscores, spaces, dots, and hyphens (see <a href='https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/schema-entities/entity-names#identifier-naming-rules'>identifier naming rules for entity names</a>)."
+            }
+        },
+        "deployAlertRule": {
+            "defaultValue": false,
+            "type": "bool",
+            "metadata": {
+                "description": "Deploy the \"Unfamiliar Azure subscription creation\" alert rule into the workspace. Requires the workspace to be linked to Azure Sentinel (see <a href='https://portal.azure.com/#blade/HubsExtension/BrowseResourceBlade/resourceType/microsoft.securityinsightsarg%2Fsentinel'>compatible workspaces</a>). If enabled, the deployment will last an additional minute while awaiting for the custom log to be populated."
+            }
+        },
+        "azureSentinelWorkspaceName": {
+            "type": "string",
+            "minLength": 1,
+            "metadata": {
+                "description": "The target Azure Sentinel workspace's name linked to the log analytics workspace (see <a href='https://portal.azure.com/#blade/HubsExtension/BrowseResource/resourceType/microsoft.securityinsightsarg%2Fsentinel'>all exisiting Sentinel instances</a>)."
+            }
+        }
+    },
+    "variables": {
+        "logAnalyticsWorkspaceSubscriptionId": "[substring(parameters('logAnalyticsWorkspaceId'), add(indexOf(parameters('logAnalyticsWorkspaceId'), '/subscriptions/'), 15), sub(indexOf(parameters('logAnalyticsWorkspaceId'), '/resourceGroups/'), add(indexOf(parameters('logAnalyticsWorkspaceId'), '/subscriptions/'), 15)))]",
+        "logAnalyticsWorkspaceResourceGroup": "[substring(parameters('logAnalyticsWorkspaceId'), add(indexOf(parameters('logAnalyticsWorkspaceId'), '/resourceGroups/'), 16), sub(indexOf(parameters('logAnalyticsWorkspaceId'), '/providers/Microsoft.OperationalInsights/workspaces/'), add(indexOf(parameters('logAnalyticsWorkspaceId'), '/resourceGroups/'), 16)))]"
+    },
+    "resources": [{
+            "type": "Microsoft.Web/connections",
+            "name": "[concat(parameters('resourcePrefix'), '-arm')]",
+            "comments": "Azure Resource Manager exposes the APIs leveraged to list the subscriptions.",
+            "properties": {
+                "displayName": "List subscriptions",
+                "api": {
+                    "name": "arm",
+                    "displayName": "Azure Resource Manager",
+                    "description": "Azure Resource Manager exposes the APIs to manage all of your Azure resources.",
+                    "iconUri": "https://connectoricons-prod.azureedge.net/laborbol/fixes/path-traversal/1.0.1552.2695/arm/icon.png",
+                    "brandColor": "#003056",
+                    "id": "[concat(subscription().id, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/arm')]",
+                    "type": "Microsoft.Web/locations/managedApis"
+                },
+                "parameterValueType": "Alternative"
+            },
+            "location": "[parameters('location')]",
+            "apiVersion": "2016-06-01",
+            "kind": "V1"
+        },
+        {
+            "type": "Microsoft.Web/connections",
+            "name": "[concat(parameters('resourcePrefix'), '-la')]",
+            "comments": "Azure Log Analytics Data Collector exposes the APIs leveraged store the subscriptions.",
+            "properties": {
+                "displayName": "Send data",
+                "parameterValues": {
+                    "username": "[reference(parameters('logAnalyticsWorkspaceId'), '2017-03-15-preview').customerId]",
+                    "password": "[listKeys(parameters('logAnalyticsWorkspaceId'), '2017-03-15-preview').primarySharedKey]"
+                },
+                "api": {
+                    "name": "azureloganalyticsdatacollector",
+                    "displayName": "Azure Log Analytics Data Collector",
+                    "description": "Azure Log Analytics Data Collector will send data to any Azure Log Analytics workspace.",
+                    "iconUri": "https://connectoricons-prod.azureedge.net/releases/v1.0.1549/1.0.1549.2680/azureloganalyticsdatacollector/icon.png",
+                    "brandColor": "#0072C6",
+                    "id": "[concat(subscription().id, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/azureloganalyticsdatacollector')]",
+                    "type": "Microsoft.Web/locations/managedApis"
+                }
+            },
+            "location": "[parameters('location')]",
+            "apiVersion": "2016-06-01",
+            "kind": "V1"
+        },
+        {
+            "type": "Microsoft.Logic/workflows",
+            "name": "[concat(parameters('resourcePrefix'), '-app')]",
+            "comments": "The workflow will later contain the application logic but is first created empty to authorize its identity.",
+            "dependsOn": [
+                "[concat(parameters('resourcePrefix'), '-la')]",
+                "[concat(parameters('resourcePrefix'), '-arm')]"
+            ],
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "triggers": {},
+                    "actions": {},
+                    "outputs": {}
+                },
+                "parameters": {}
+            },
+            "location": "[parameters('location')]",
+            "apiVersion": "2017-07-01"
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "name": "[guid(concat(subscription().id, resourceGroup().id, parameters('resourcePrefix'), '-role'))]",
+            "comments": "The role assignment authorizes the worflow's identity with the Azure Resource Manager at root level.",
+            "scope": "/",
+            "dependsOn": [
+                "[concat(parameters('resourcePrefix'), '-app')]"
+            ],
+            "properties": {
+                "description": "[format('Authorizes the {0}-app logic app to list all subscriptions through the {0}-arm connection.', parameters('resourcePrefix'))]",
+                "principalId": "[reference(resourceId('Microsoft.Logic/workflows', concat(parameters('resourcePrefix'), '-app')), '2017-07-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal",
+                "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
+            },
+            "apiVersion": "2020-04-01-preview"
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "name": "[concat(parameters('resourcePrefix'), '-app-logic')]",
+            "comments": "The subdeployment populates the workflow with the actual logic once that the system-assigned identity has been authorized.",
+            "dependsOn": [
+                "[concat(parameters('resourcePrefix'), '-app')]",
+                "[guid(concat(subscription().id, resourceGroup().id, parameters('resourcePrefix'), '-role'))]"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "parameters": {},
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.1",
+                    "parameters": {},
+                    "variables": {},
+                    "resources": [{
+                        "type": "Microsoft.Logic/workflows",
+                        "name": "[concat(parameters('resourcePrefix'), '-app')]",
+                        "comments": "The workflow contains the application logic to forward the subscriptions towards the log analytics workspace.",
+                        "identity": {
+                            "type": "SystemAssigned"
+                        },
+                        "properties": {
+                            "state": "Enabled",
+                            "definition": {
+                                "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                                "contentVersion": "1.0.0.0",
+                                "parameters": {
+                                    "$connections": {
+                                        "defaultValue": {},
+                                        "type": "Object"
+                                    }
+                                },
+                                "triggers": {
+                                    "Recurrence": {
+                                        "recurrence": {
+                                            "frequency": "Minute",
+                                            "interval": 1
+                                        },
+                                        "evaluatedRecurrence": {
+                                            "frequency": "Minute",
+                                            "interval": 1
+                                        },
+                                        "type": "Recurrence"
+                                    }
+                                },
+                                "actions": {
+                                    "For_each": {
+                                        "foreach": "@body('List_subscriptions')?['value']",
+                                        "actions": {
+                                            "Send_Data": {
+                                                "runAfter": {},
+                                                "type": "ApiConnection",
+                                                "inputs": {
+                                                    "body": "@{items('For_each')}",
+                                                    "headers": {
+                                                        "Log-Type": "[parameters('customLogName')]"
+                                                    },
+                                                    "host": {
+                                                        "connection": {
+                                                            "name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+                                                        }
+                                                    },
+                                                    "method": "post",
+                                                    "path": "/api/logs"
+                                                }
+                                            }
+                                        },
+                                        "runAfter": {
+                                            "List_subscriptions": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "type": "Foreach"
+                                    },
+                                    "List_subscriptions": {
+                                        "runAfter": {},
+                                        "type": "ApiConnection",
+                                        "inputs": {
+                                            "host": {
+                                                "connection": {
+                                                    "name": "@parameters('$connections')['arm']['connectionId']"
+                                                }
+                                            },
+                                            "method": "get",
+                                            "path": "/subscriptions",
+                                            "queries": {
+                                                "x-ms-api-version": "2016-06-01"
+                                            }
+                                        }
+                                    }
+                                },
+                                "outputs": {}
+                            },
+                            "parameters": {
+                                "$connections": {
+                                    "value": {
+                                        "arm": {
+                                            "connectionId": "[resourceId('Microsoft.Web/connections',concat(parameters('resourcePrefix'), '-arm'))]",
+                                            "connectionName": "arm",
+                                            "connectionProperties": {
+                                                "authentication": {
+                                                    "type": "ManagedServiceIdentity"
+                                                }
+                                            },
+                                            "id": "[concat(subscription().id, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/arm')]"
+                                        },
+                                        "azureloganalyticsdatacollector": {
+                                            "connectionId": "[resourceId('Microsoft.Web/connections',concat(parameters('resourcePrefix'), '-la'))]",
+                                            "connectionName": "azureloganalyticsdatacollector",
+                                            "id": "[concat(subscription().id, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/azureloganalyticsdatacollector')]"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "location": "[parameters('location')]",
+                        "apiVersion": "2017-07-01"
+                    }]
+                }
+            },
+            "apiVersion": "2020-06-01"
+        },
+        {
+            "type": "Microsoft.Resources/deploymentScripts",
+            "kind": "AzurePowerShell",
+            "name": "[concat(parameters('resourcePrefix'), '-wait-for-logs')]",
+            "comments": "Wait a minute for the logic app and log analytics to catch up.",
+            "condition": "[parameters('deployAlertRule')]",
+            "dependsOn": [
+                "[concat(parameters('resourcePrefix'), '-app-logic')]"
+            ],
+            "properties": {
+                "azPowerShellVersion": "3.0",
+                "scriptContent": "Start-Sleep -Seconds 60",
+                "cleanupPreference": "Always",
+                "retentionInterval": "PT1H"
+            },
+            "location": "[parameters('location')]",
+            "apiVersion": "2020-10-01"
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "name": "[concat(parameters('resourcePrefix'), '-alert-rule')]",
+            "comments": "The subdeployment deploys the \"Unfamiliar Azure subscription creation\" rule into the Azure Sentinel instance.",
+            "dependsOn": [
+                "[concat(parameters('resourcePrefix'), '-app-logic')]",
+                "[concat(parameters('resourcePrefix'), '-wait-for-logs')]"
+            ],
+            "subscriptionId": "[variables('logAnalyticsWorkspaceSubscriptionId')]",
+            "resourceGroup": "[variables('logAnalyticsWorkspaceResourceGroup')]",
+            "properties": {
+                "mode": "Incremental",
+                "parameters": {},
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.1",
+                    "parameters": {},
+                    "variables": {},
+                    "resources": [{
+                        "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+                        "kind": "Scheduled",
+                        "name": "[concat(parameters('azureSentinelWorkspaceName'), '/Microsoft.SecurityInsights/', guid(concat(parameters('resourcePrefix'), '-alert-rule')))]",
+                        "comments": "The alert rule monitors the newly created custom log for new subscriptions.",
+                        "condition": "[parameters('deployAlertRule')]",
+                        "properties": {
+                            "displayName": "Unfamiliar Azure subscription creation",
+                            "description": "A new Azure subscription was created. Azure subscriptions are rarely created and can be abused by compromised users to spin up rogue resources.\n\nGlobal administrators do not see new subscriptions by default which grants malicious actors a level of persistence within Azure.",
+                            "severity": "Medium",
+                            "enabled": true,
+                            "query": "[format('let schedule = 5m;\nlet baseline = toscalar([\"{0}_CL\"]\n    | summarize min(TimeGenerated)) + schedule;\n[\"{0}_CL\"]\n| extend IngestionDelta = ingestion_time() - TimeGenerated\n| summarize arg_min(TimeGenerated, *) by SubscriptionId\n| where TimeGenerated >= ago(schedule + IngestionDelta) and TimeGenerated >= baseline\n', parameters('customLogName'))]",
+                            "queryFrequency": "PT5M",
+                            "queryPeriod": "P1D",
+                            "triggerOperator": "GreaterThan",
+                            "triggerThreshold": 0,
+                            "suppressionDuration": "PT5H",
+                            "suppressionEnabled": false,
+                            "tactics": [
+                                "Impact"
+                            ],
+                            "techniques": [
+                                "T1496"
+                            ],
+                            "alertRuleTemplateName": null,
+                            "incidentConfiguration": {
+                                "createIncident": true,
+                                "groupingConfiguration": {
+                                    "enabled": false,
+                                    "reopenClosedIncident": false,
+                                    "lookbackDuration": "PT5H",
+                                    "matchingMethod": "AllEntities",
+                                    "groupByEntities": [],
+                                    "groupByAlertDetails": [],
+                                    "groupByCustomDetails": []
+                                }
+                            },
+                            "eventGroupingSettings": {
+                                "aggregationKind": "AlertPerResult"
+                            },
+                            "alertDetailsOverride": {
+                                "alertDisplayNameFormat": null,
+                                "alertDescriptionFormat": "A new Azure subscription titled \"{{displayName_s}}\" was created with UUID {{SubscriptionId}}. Azure subscriptions are rarely created and can be abused by compromised users to spin up rogue resources through free trials.\n\nGlobal administrators do not see new subscriptions by default which grants malicious actors a level of persistence within Azure.",
+                                "alertTacticsColumnName": null,
+                                "alertSeverityColumnName": null
+                            },
+                            "customDetails": null,
+                            "entityMappings": null,
+                            "sentinelEntitiesMappings": null
+                        },
+                        "apiVersion": "2021-10-01-preview"
+                    }]
+                }
+            },
+            "apiVersion": "2020-06-01"
+        }
+    ]
+}

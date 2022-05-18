@@ -1,0 +1,78 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+    "handler": "Microsoft.Azure.CreateUIDef",
+    "version": "0.1.2-preview",
+    "parameters": {
+        "resourceTypes": ["Microsoft.Web/locations/managedApis", "Microsoft.Web/connections", "Microsoft.Logic/workflows", "Microsoft.Authorization/roleAssignments", "Microsoft.Resources/deploymentScripts", "Microsoft.Resources/deployments"],
+        "basics": [{
+                "name": "resourcePrefix",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Resource prefix",
+                "toolTip": "Provide a prefix used to name all created resources. Must be composed of alphanumerics, hyphens and underscores (see <a href='https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules'>naming rules and restrictions for Azure resources</a>).",
+                "defaultValue": "subscription-monitoring",
+                "constraints": {
+                    "required": true,
+                    "regex": "^[a-z0-9A-Z]([a-z0-9A-Z-_]{0,37}[a-z0-9A-Z_])?$",
+                    "validationMessage": "The resource prefix must be between 1 and 39 characters long and only contain alphanumerics, hyphens and underscores. A hyphen is automatically appened to the prefix."
+                }
+            },
+            {
+                "name": "logAnalytics",
+                "type": "Microsoft.Common.Section",
+                "label": "Log analytics details",
+                "elements": [{
+                        "name": "workspace",
+                        "type": "Microsoft.Solutions.ResourceSelector",
+                        "label": "Target log analytics workspace",
+                        "toolTip": "Select an exisitng log analytics workspace into which the subscriptions will be logged.",
+                        "resourceType": "Microsoft.OperationalInsights/workspaces",
+                        "options": {
+                            "filter": {
+                                "subscription": "all",
+                                "location": "all"
+                            }
+                        }
+                    },
+                    {
+                        "name": "customLogName",
+                        "type": "Microsoft.Common.TextBox",
+                        "label": "Custom log name",
+                        "toolTip": "The custom log name under which the subscriptions should be stored in the log analytics workspace. Valid identifier names are between 1 and 1024 (effectively 1021) characters long, are case-sensitive, and may contain alphanumerics, underscores, spaces, dots, and hyphens (see <a href='https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/schema-entities/entity-names#identifier-naming-rules'>identifier naming rules for entity names</a>).",
+                        "defaultValue": "SubscriptionInventory",
+                        "constraints": {
+                            "required": true,
+                            "regex": "^[a-z0-9A-Z-_ .]{1,1021}(?<!_CL)$",
+                            "validationMessage": "Valid identifier names are between 1 and 1024 (effectively 1021) characters long, are case-sensitive, and may contain alphanumerics, underscores, spaces, dots, and hyphens (see <a href='https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/schema-entities/entity-names#identifier-naming-rules'>identifier naming rules for entity names</a>). The \"_CL\" custom log suffix is automatically appended."
+                        }
+                    },
+                    {
+                        "name": "deployAlertRule",
+                        "type": "Microsoft.Common.CheckBox",
+                        "label": "Deploy Azure Sentinel alert rule",
+                        "tooltip": "Deploy the \"Unfamiliar Azure subscription creation\" alert rule into the workspace. Requires the workspace to be linked to Azure Sentinel (see <a href='https://portal.azure.com/#blade/HubsExtension/BrowseResourceBlade/resourceType/microsoft.securityinsightsarg%2Fsentinel'>compatible workspaces</a>). If enabled, the deployment will last an additional minute while awaiting for the custom log to be populated."
+                    }
+                ],
+                "visible": true
+            },
+            {
+                "name": "permissions",
+                "type": "Microsoft.Common.InfoBox",
+                "visible": true,
+                "options": {
+                    "icon": "Info",
+                    "text": "In order for the logic app to list all available subscriptions, it is assigned the Reader role at root scope. Role assignments created at root scope will not be removed when resources are deleted and will require using the command line.",
+                    "uri": "https://docs.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin#remove-elevated-access"
+                }
+            }
+        ],
+        "steps": [],
+        "outputs": {
+            "location": "[location()]",
+            "resourcePrefix": "[basics('resourcePrefix')]",
+            "logAnalyticsWorkspaceId": "[basics('logAnalytics').workspace.id]",
+            "azureSentinelWorkspaceName": "[basics('logAnalytics').workspace.name]",
+            "customLogName": "[basics('logAnalytics').customLogName]",
+            "deployAlertRule": "[basics('logAnalytics').deployAlertRule]"
+        }
+    }
+}

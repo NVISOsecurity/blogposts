@@ -1,0 +1,65 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "metadata": {
+        "comments": "This template sets up alerting for Azure subscriptions.",
+        "author": "Maxime Thiebaut (@0xThiebaut)",
+        "blog": "https://blog.nviso.eu/2022/05/18/detecting-preventing-rogue-azure-subscriptions/"
+    },
+    "parameters": {
+        "workspace": {
+            "type": "String"
+        }
+    },
+    "resources": [{
+        "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/c040533a-0af4-5c48-84a2-aa939653a219')]",
+        "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/c040533a-0af4-5c48-84a2-aa939653a219')]",
+        "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+        "kind": "Scheduled",
+        "apiVersion": "2021-10-01-preview",
+        "properties": {
+            "displayName": "Unfamiliar Azure subscription creation",
+            "description": "A new Azure subscription was created. Azure subscriptions are rarely created and can be abused by compromised users to spin up rogue resources.\n\nGlobal administrators do not see new subscriptions by default which grants malicious actors a level of persistence within Azure.",
+            "severity": "Medium",
+            "enabled": true,
+            "query": "let schedule = 5m;\nlet baseline = toscalar([\"SubscriptionInventory_CL\"]\n    | summarize min(TimeGenerated)) + schedule;\n[\"SubscriptionInventory_CL\"]\n| extend IngestionDelta = ingestion_time() - TimeGenerated\n| summarize arg_min(TimeGenerated, *) by SubscriptionId\n| where TimeGenerated >= ago(schedule + IngestionDelta) and TimeGenerated >= baseline\n",
+            "queryFrequency": "PT5M",
+            "queryPeriod": "P1D",
+            "triggerOperator": "GreaterThan",
+            "triggerThreshold": 0,
+            "suppressionDuration": "PT5H",
+            "suppressionEnabled": false,
+            "tactics": [
+                "Impact"
+            ],
+            "techniques": [
+                "T1496"
+            ],
+            "alertRuleTemplateName": null,
+            "incidentConfiguration": {
+                "createIncident": true,
+                "groupingConfiguration": {
+                    "enabled": false,
+                    "reopenClosedIncident": false,
+                    "lookbackDuration": "PT5H",
+                    "matchingMethod": "AllEntities",
+                    "groupByEntities": [],
+                    "groupByAlertDetails": [],
+                    "groupByCustomDetails": []
+                }
+            },
+            "eventGroupingSettings": {
+                "aggregationKind": "AlertPerResult"
+            },
+            "alertDetailsOverride": {
+                "alertDisplayNameFormat": null,
+                "alertDescriptionFormat": "A new Azure subscription titled \"{{displayName_s}}\" was created with UUID {{SubscriptionId}}. Azure subscriptions are rarely created and can be abused by compromised users to spin up rogue resources through free trials.\n\nGlobal administrators do not see new subscriptions by default which grants malicious actors a level of persistence within Azure.",
+                "alertTacticsColumnName": null,
+                "alertSeverityColumnName": null
+            },
+            "customDetails": null,
+            "entityMappings": null,
+            "sentinelEntitiesMappings": null
+        }
+    }]
+}
