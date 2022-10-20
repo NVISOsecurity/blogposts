@@ -27,25 +27,11 @@ class NitroDate(ABC):
         elif isinstance(self.date, datetime):
             return True
         else:
-            raise NitroDateInconsistentError
+            raise Exception
 
     def to_iso8601(self):
         """ returns the NitraDate in the iso8601 format"""
         raise NotImplementedError()
-
-    def to_getincidentsbyquery_arg(self):
-        """ returns the NitraDate in a format that is suitable to use in xsoar incident queries"""
-        return self.to_iso8601()
-
-
-class NitroDateInconsistentError(Exception):
-    pass
-# custom exception raised when a NitroDate does not have a valid datetime.datetime in it
-
-
-class NitroDateParsingError(Exception):
-    pass
-# custom exception raised when an Error is Caught while parsing a datetime.datetime in a NitroDate
 
 
 class NitroUnlimitedPastDate(NitroDate):
@@ -91,7 +77,7 @@ class NitroRegularDate(NitroDate):
 class NitroDateHint(Enum):
     Future = 1
     Past = 2
-# a NitroEnum used as a flag for functions that build NitroDates and let's them know whether or not we have
+# an Enum used as a flag for functions that build NitroDates and lets them know whether or not we have
 # an indication as to whether an undefined date we're parsing should be future or past
 
 
@@ -107,7 +93,7 @@ class NitroDateFactory(ABC):
         try:
             date = dateutil.parser.isoparse(arg)
         except Exception as e:
-            raise NitroDateParsingError from e
+            raise Exception from e
         return NitroRegularDate(date=date)
 
     @classmethod
