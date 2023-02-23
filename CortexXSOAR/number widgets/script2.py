@@ -99,9 +99,9 @@ for result in results:
         if (
             same_target is not None
             and
-            isinstance(count_ := content.get("count_"), int)
+            isinstance(count := content.get("count_"), int)
         ):
-            same_target.append(count_)
+            same_target.append(count)
 
 total_this_month_counts = sum(this_month_counts)
 total_last_month_counts = sum(last_month_counts)

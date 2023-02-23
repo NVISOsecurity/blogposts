@@ -51,9 +51,9 @@ for result in results:
         if (
             isinstance(content, dict)
             and
-            isinstance(count_ := content.get("count_"), int)
+            isinstance(count := content.get("count_"), int)
         ):
-            counts.append(count_)
+            counts.append(count)
 
 total_count = sum(counts)
 
