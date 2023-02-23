@@ -15,43 +15,43 @@ if is_dashboard:
     else:
         to_ = None
 
-q = "SecurityIncident"
+query = "SecurityIncident"
 
-q_ = list()
+tmp_query_list = list()
 
 if from_ is not None:
-    q_.append(f'TimeGenerated >= datetime("{from_}")')
+    tmp_query_list.append(f'TimeGenerated >= datetime("{from_}")')
 
 if to_ is not None:
-    q_.append(f'TimeGenerated >= datetime("{to_}")')
+    tmp_query_list.append(f'TimeGenerated >= datetime("{to_}")')
 
-if q_:
-    q += "\n| where " + " and ".join(q_)
+if tmp_query_list:
+    query += "\n| where " + " and ".join(tmp_query_list)
 
-q += """
+query += """
 | extend same = 1
 | summarize count() by same"""
 
 
-res = demisto.executeCommand(
+results = demisto.executeCommand(
     "azure-sentinel-query",
-    {"query": q}
+    {"query": query}
 )
 
 counts = []
 
-for res_ in res:
+for result in results:
     if not (
-        isinstance(res_, dict)
+        isinstance(result, dict)
         and
-        isinstance(lst := res_.get("Contents"), list)
+        isinstance(contents := result.get("Contents"), list)
     ):
         continue
-    for lst_ in lst:
+    for content in contents:
         if (
-            isinstance(lst_, dict)
+            isinstance(content, dict)
             and
-            isinstance(count_ := lst_.get("count_"), int)
+            isinstance(count_ := content.get("count_"), int)
         ):
             counts.append(count_)
 

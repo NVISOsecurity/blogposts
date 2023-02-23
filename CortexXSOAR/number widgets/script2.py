@@ -38,41 +38,41 @@ if is_dashboard:
     else:
         to_2 = None
 
-q = "SecurityIncident"
+query = "SecurityIncident"
 
-q_ = list()
+tmp_query_list = list()
 
 if from_ is not None:
-    q_.append(f"TimeGenerated >= datetime(\"{from_}\")")
+    tmp_query_list.append(f"TimeGenerated >= datetime(\"{from_}\")")
 
 if to_ is not None:
-    q_.append(f"TimeGenerated < datetime(\"{to_}\")")
+    tmp_query_list.append(f"TimeGenerated < datetime(\"{to_}\")")
 
-if q_:
-    q += "\n| where " + " and ".join(q_)
+if tmp_query_list:
+    query += "\n| where " + " and ".join(tmp_query_list)
 
-q += """
+query += """
 | extend same = 1
 | union (
 SecurityIncident"""
 
-q__ = list()
+tmp_query_list2 = list()
 
 if from_2 is not None:
-    q__.append(f"TimeGenerated >= datetime(\"{from_2}\")")
+    tmp_query_list2.append(f"TimeGenerated >= datetime(\"{from_2}\")")
 
 if to_2 is not None:
-    q__.append(f"TimeGenerated < datetime(\"{to_2}\")")
+    tmp_query_list2.append(f"TimeGenerated < datetime(\"{to_2}\")")
 
-if q__:
-    q += "\n| where " + " and ".join(q__)
+if tmp_query_list2:
+    query += "\n| where " + " and ".join(tmp_query_list2)
 
-q += """
+query += """
 | extend same = 2)
 | summarize count() by same"""
 
-res = demisto.executeCommand("azure-sentinel-query", {
-    "query": q
+results = demisto.executeCommand("azure-sentinel-query", {
+    "query": query
 })
 
 this_month_counts = list()
@@ -83,21 +83,25 @@ lookup = {
     2: last_month_counts
 }
 
-for res_ in res:
+for result in results:
     if not (
-        isinstance(res_, dict)
+        isinstance(result, dict)
         and
-        isinstance(lst := res_.get("Contents"), list)
+        isinstance(contents := result.get("Contents"), list)
     ):
         continue
-    for lst_ in lst:
-        if not isinstance(lst_, dict):
+    for content in contents:
+        if not isinstance(content, dict):
             continue
-        if not isinstance(tgt_ := lst_.get("same"), int):
+        if not isinstance(raw_same_target := content.get("same"), int):
             continue
-        tgt = lookup.get(tgt_)
-        if tgt is not None and isinstance(count_ := lst_.get("count_"), int):
-            tgt.append(count_)
+        same_target = lookup.get(raw_same_target)
+        if (
+            same_target is not None
+            and
+            isinstance(count_ := content.get("count_"), int)
+        ):
+            same_target.append(count_)
 
 total_this_month_counts = sum(this_month_counts)
 total_last_month_counts = sum(last_month_counts)
