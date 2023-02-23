@@ -33,18 +33,18 @@ q += """
 | summarize count() by same"""
 
 
-res = demisto.executeCommand(
+results = demisto.executeCommand(
     "azure-sentinel-query",
     {"query": q}
 )
 
 counts = []
 
-for res_ in res:
+for result in results:
     if not (
-        isinstance(res_, dict)
+        isinstance(result, dict)
         and
-        isinstance(lst := res_.get("Contents"), list)
+        isinstance(lst := result.get("Contents"), list)
     ):
         continue
     for lst_ in lst:
