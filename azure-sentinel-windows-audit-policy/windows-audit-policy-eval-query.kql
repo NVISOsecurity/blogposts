@@ -1,0 +1,125 @@
+let LookbackTime = 60d; // LookbackTime of the queries
+// The defined/applied audit policy of the environment. This should be customized to match the configuration of the environment the query is run against.
+let AppliedAuditPolicy = datatable(Task: int, Category: string, Subcategory: string, Enabled: bool, Comment: string) [
+    14336, "Account Logon", "Credential Validation", true, "",
+    14339, "Account Logon", "Kerberos Authentication Service", true, "This subcategory makes sense only on domain controllers.",
+    14337, "Account Logon", "Kerberos Service Ticket Operations", true, "This subcategory makes sense only on domain controllers.",
+    14338, "Account Logon", "Other Account Logon Events", true, "Should not contain any events. Reserved for future usage.",
+    13828, "Account Management", "Application Group Management", false, "Application Group Management subcategory events may not exist because Authorization Manager is very rarely in use and it is deprecated starting from Windows Server 2012.",
+    13825, "Account Management", "Computer Account Management", true, "This subcategory generates events only on domain controllers.",
+    13827, "Account Management", "Distribution Group Management", false, "This subcategory generates events only on domain controllers.",
+    13829, "Account Management", "Other Account Management Events", true, "",
+    13826, "Account Management", "Security Group Management", true, "",
+    13824, "Account Management", "User Account Management", true, "",
+    13314, "Detailed Tracking", "DPAPI Activity", true, "",
+    13316, "Detailed Tracking", "PnP Activity", false, "",
+    13312, "Detailed Tracking", "Process Creation", true, "",
+    13313, "Detailed Tracking", "Process Termination", false, "",
+    13315, "Detailed Tracking", "RPC Events", false, "",
+    13317, "Detailed Tracking", "Token Right Adjusted", false, "",
+    14083, "DS Access", "Detailed Directory Service Replication", false, "This subcategory makes sense only on domain controllers.",
+    14080, "DS Access", "Directory Service Access", true, "This subcategory makes sense only on domain controllers.",
+    14081, "DS Access", "Directory Service Changes", true, "This subcategory makes sense only on domain controllers.",
+    14082, "DS Access", "Directory Service Replication", false, "This subcategory makes sense only on domain controllers.",
+    12546, "Logon/Logoff", "Account Lockout", true, "",
+    12554, "Logon/Logoff", "Group Membership", false, "",
+    12550, "Logon/Logoff", "IPsec Extended Mode", false, "",
+    12547, "Logon/Logoff", "IPsec Main Mode", true, "",
+    12549, "Logon/Logoff", "IPsec Quick Mode", false, "",
+    12545, "Logon/Logoff", "Logoff", true, "",
+    12544, "Logon/Logoff", "Logon", true, "",
+    12552, "Logon/Logoff", "Network Policy Server", false, "",
+    12551, "Logon/Logoff", "Other Logon/Logoff Events", true, "",
+    12548, "Logon/Logoff", "Special Logon", true, "",
+    12553, "Logon/Logoff", "User / Device Claims", false, "",
+    12806, "Object Access", "Application Generated", false, "",
+    12805, "Object Access", "Certification Services", false, "",
+    12811, "Object Access", "Detailed File Share", false, "",
+    12808, "Object Access", "File Share", false, "",
+    12800, "Object Access", "File System", false, "",
+    12810, "Object Access", "Filtering Platform Connection", false, "",
+    12809, "Object Access", "Filtering Platform Packet Drop", false, "",
+    12807, "Object Access", "Handle Manipulation", false, "",
+    12802, "Object Access", "Kernel Object", false, "",
+    12804, "Object Access", "Other Object Access Events", false, "",
+    12801, "Object Access", "Registry", false, "",
+    12812, "Object Access", "Removable Storage", false, "",
+    12803, "Object Access", "SAM", false, "",
+    12813, "Object Access", "Central Access Policy Staging", false, "",
+    13568, "Policy Change", "Audit Policy Change", true, "",
+    13569, "Policy Change", "Authentication Policy Change", true, "",
+    13570, "Policy Change", "Authorization Policy Change", false, "",
+    13572, "Policy Change", "Filtering Platform Policy Change", false, "",
+    13571, "Policy Change", "MPSSVC Rule-Level Policy Change", true, "",
+    13573, "Policy Change", "Other Policy Change Events", false, "",
+    13057, "Privilege Use", "Non Sensitive Privilege Use", false, "",
+    13058, "Privilege Use", "Other Privilege Use Events", false, "This auditing subcategory doesn’t have any informative events inside.",
+    13056, "Privilege Use", "Sensitive Privilege Use", false, "",
+    12291, "System", "IPsec Driver", true, "",
+    12292, "System", "Other System Events", false, "",
+    12288, "System", "Security State Change", true, "",
+    12289, "System", "Security System Extension", true, "",
+    12290, "System", "System Integrity", true, ""
+];
+// Identify all computers in the Security Event Log and total number of events for the lookback time.
+let EnvironmentInformation = SecurityEvent
+    | project TimeGenerated, Computer, Channel, EventSourceName
+    | where TimeGenerated > ago(LookbackTime)
+    | where Channel == "Security" and EventSourceName == "Microsoft-Windows-Security-Auditing"
+    | summarize TotalComputers = make_set(Computer), TotalEventCount = count();
+// List of computers that appear in the logs for the queried LookbackTime.
+let TotalComputers = toscalar(EnvironmentInformation | project TotalComputers);
+let TotalEventCount = toscalar(EnvironmentInformation | project TotalEventCount);
+// Start Query
+AppliedAuditPolicy
+| project
+    Task,
+    AuditPolicySubCategory = strcat(Category, ".", Subcategory),
+    ExpectedEnabledStatus = Enabled,
+    Comment
+| join kind=fullouter (SecurityEvent
+    | project TimeGenerated, Computer, Channel, EventSourceName, Task, EventID
+    | where TimeGenerated > ago(LookbackTime)
+    | where Channel == "Security" and EventSourceName == "Microsoft-Windows-Security-Auditing"
+    | summarize
+        minTimeGenerated = min(TimeGenerated),
+        maxTimeGenerated = max(TimeGenerated),
+        IdentifiedEventIDs = make_set(EventID),
+        ComputersWithAuditPolicy = make_set(Computer),
+        EventCount = count()
+        by Task)
+    on $left.Task == $right.Task
+| extend IdentifiedEventIDs = iff(isempty(IdentifiedEventIDs), todynamic("[]"), IdentifiedEventIDs) // Set default value of IdentifiedEventIDs to [] if empty.
+| extend ComputersWithAuditPolicy = iff(isempty(ComputersWithAuditPolicy), todynamic("[]"), ComputersWithAuditPolicy) // Set default value of ComputersWithAuditPolicy  to [] if empty.
+| extend EventCount = iff(isempty(EventCount), 0, EventCount) // Set default value of EventCount to 0 if empty.
+| extend minTimeGenerated = iff(isempty(minTimeGenerated), "N/A", tostring(format_datetime(minTimeGenerated, 'yyyy-MM-dd HH:mm:ss'))) // Set default value of minTimeGenerated to N/A if empty.
+| extend maxTimeGenerated = iff(isempty(maxTimeGenerated), "N/A", tostring(format_datetime(maxTimeGenerated, 'yyyy-MM-dd HH:mm:ss'))) // Set default value of maxTimeGenerated to N/A if empty.
+| extend ComputersMissingAuditPolicy = set_difference(TotalComputers, ComputersWithAuditPolicy) // Calculate computers with missing audit policy by taking the difference between TotalComputers and ComputersWithAuditPolicy.
+| extend TotalComputerCount = array_length(TotalComputers) // Calculate total number of computers identified in the security log from the set TotalComputers.
+| extend ComputersWithAuditPolicyCount = array_length(ComputersWithAuditPolicy) // Calculate total number of computers with the Audit Policy from the set ComputersWithAuditPolicy.
+| extend PercantageCoverageInEnvironment = round(100.0 * ComputersWithAuditPolicyCount / TotalComputerCount, 2) // Calculate the percentage of computers that have the audit policy category enabled.
+| extend EventPercantage = round(100.0 * EventCount / TotalEventCount, 2) // Calculate the percentage of events generated by the audit policy that have the audit policy category.
+| extend Enabled = iff(EventCount == 0, "false", "true") // Set to true or false depending on whether events where identified for the audit policy category.
+| extend Verdict = case(
+                       ExpectedEnabledStatus == Enabled, "OK",
+                       ExpectedEnabledStatus != Enabled and Enabled == "true", "Warning: Audit policy is enabled, although it is expected to be disabled.",
+                       ExpectedEnabledStatus != Enabled and Enabled == "false", "Warning: No event IDs identified for audit policy for the queried time even though it is expected to be enabled. Consider increasing Lookbacktime time of the query or reviewing your audit policy configuration.",
+                       "N/A"
+) // Calculate the verdict according to the ExpectedEnabledStatus and Enabled status of each audit policy category.
+| project 
+    AuditPolicySubCategory,
+    ExpectedEnabledStatus,
+    Enabled,
+    Verdict,
+    Comment,
+    IdentifiedEventIDs,
+    minTimeGenerated,
+    maxTimeGenerated,
+    EventCount,
+    TotalEventCount,
+    EventPercantage,
+    ComputersMissingAuditPolicy,
+    ComputersWithAuditPolicy,
+    ComputersWithAuditPolicyCount,
+    TotalComputerCount,
+    PercantageCoverageInEnvironment
