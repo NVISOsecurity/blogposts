@@ -1,3 +1,4 @@
+// Azure windows audit policy verification
 let LookbackTime = 60d; // LookbackTime of the queries
 // The defined/applied audit policy of the environment. This should be customized to match the configuration of the environment the query is run against.
 let AppliedAuditPolicy = datatable(Task: int, Category: string, Subcategory: string, Enabled: bool, Comment: string) [
