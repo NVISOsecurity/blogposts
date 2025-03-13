@@ -1,0 +1,33 @@
+// For any inbound SMB connections...
+DeviceNetworkEvents
+| where LocalPort == 445
+    and ActionType in("InboundConnectionAccepted") // (Add "ConnectionAttempt" for attempts)
+// identify possible remote devices with matching IPs...
+| extend RemoteIPv6 = parse_ipv6(RemoteIP)
+| join kind=inner (
+    DeviceNetworkInfo 
+    | mv-expand IPAddress=parse_json(IPAddresses) 
+    | project
+        RemoteTimeGenerated=TimeGenerated,
+        RemoteDeviceId=DeviceId,
+        RemoteIPv6=parse_ipv6(tostring(IPAddress.IPAddress))
+    )
+    on RemoteIPv6
+// of which the most recent device...
+| where TimeGenerated > RemoteTimeGenerated
+| summarize arg_max(RemoteTimeGenerated, *) by TimeGenerated, ReportId
+// is not onboarded.
+| join kind=inner (
+    DeviceInfo
+    | summarize arg_max(TimeGenerated, RemoteDeviceName=DeviceName, OnboardingStatus, DeviceCategory) by RemoteDeviceId=DeviceId
+    )
+    on RemoteDeviceId
+| where OnboardingStatus != "Onboarded"
+// Render the results in an actionable table 
+| extend InfoAge=TimeGenerated - RemoteTimeGenerated
+| summarize
+    ReportingDevices=dcount(DeviceId),  // The number of devices reporting SMB connections
+    ReportedConnections=count(),        // The number of SMB connections
+    MaxInfoAge=max(InfoAge)             // Duration between a device beeing sighted and the SMB connection
+    by RemoteDeviceName, DeviceId=RemoteDeviceId, OnboardingStatus, DeviceCategory
+| order by ReportedConnections desc
